@@ -421,20 +421,20 @@ class Ansible(base.Base):
                 os.path.join(self._config.scenario.ephemeral_directory, "collections")
             )
         ]
-        if collection_indicator in self._config.project_directory:
-            collection_path, right = self._config.project_directory.rsplit(
-                collection_indicator, 1
-            )
-            collections_path_list.append(util.abs_path(collection_path))
-        collections_path_list.extend(
-            [
-                util.abs_path(
-                    os.path.join(os.path.expanduser("~"), ".ansible/collections")
-                ),
-                "/usr/share/ansible/collections",
-                "/etc/ansible/collections",
-            ]
-        )
+        # if collection_indicator in self._config.project_directory:
+        #     collection_path, right = self._config.project_directory.rsplit(
+        #         collection_indicator, 1
+        #     )
+        #     collections_path_list.append(util.abs_path(collection_path))
+        # collections_path_list.extend(
+        #     [
+        #         util.abs_path(
+        #             os.path.join(os.path.expanduser("~"), ".ansible/collections")
+        #         ),
+        #         "/usr/share/ansible/collections",
+        #         "/etc/ansible/collections",
+        #     ]
+        # )
         env = util.merge_dicts(
             os.environ,
             {
@@ -457,7 +457,7 @@ class Ansible(base.Base):
                         *os.environ.get("ANSIBLE_ROLES_PATH", "").split(":"),
                     ]
                 ),
-                self._config.ansible_collections_path: ":".join(collections_path_list),
+                # self._config.ansible_collections_path: ":".join(collections_path_list),
                 "ANSIBLE_LIBRARY": ":".join(self._get_modules_directories()),
                 "ANSIBLE_FILTER_PLUGINS": ":".join(
                     [

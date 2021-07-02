@@ -23,20 +23,22 @@ class Collections(AnsibleGalaxyBase):
                 "requirements-file": os.path.join(
                     self._config.scenario.directory, "collections.yml"
                 ),
-                "collections-path": os.path.join(
-                    self._config.scenario.ephemeral_directory, "collections"
-                ),
+                # "collections-path": os.path.join(
+                #     self._config.scenario.ephemeral_directory, "collections"
+                # ),
             },
         )
 
         return specific
+        # return general
 
     @property
     def default_env(self):
         general = super(Collections, self).default_env
-        return util.merge_dicts(
-            general, {self._config.ansible_collections_path: self.install_path}
-        )
+        return general
+        # return util.merge_dicts(
+        #     general, {self._config.ansible_collections_path: self.install_path}
+        # )
 
     @property
     def install_path(self):

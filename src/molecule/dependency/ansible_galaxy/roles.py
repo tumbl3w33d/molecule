@@ -23,16 +23,16 @@ class Roles(AnsibleGalaxyBase):
                 "role-file": os.path.join(
                     self._config.scenario.directory, "requirements.yml"
                 ),
-                "roles-path": os.path.join(
-                    self._config.scenario.ephemeral_directory, "roles"
-                ),
+                # "roles-path": os.path.join(
+                #     self._config.scenario.ephemeral_directory, "roles"
+                # ),
             },
         )
         return specific
 
-    @property
-    def install_path(self):
-        return os.path.join(self._config.scenario.directory, self.options["roles-path"])
+    # @property
+    # def install_path(self):
+    #     return os.path.join(self._config.scenario.directory, self.options["roles-path"])
 
     @property
     def requirements_file(self):
