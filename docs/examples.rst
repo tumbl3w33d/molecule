@@ -7,37 +7,70 @@ Common Molecule Use Cases
 Running inside a container
 ==========================
 
-Molecule is built into a Docker image by the `Toolset`_ project.
+Molecule is built into a Docker image by the
+`Ansible Creator Execution Environment`_ project.
 
 Any questions or bugs related to use of Molecule from within a container
-should be addressed by the Toolset project.
+should be addressed by the Ansible Creator Execution Environment project.
 
-.. _`Toolset`: https://github.com/ansible-community/toolset
+.. _`Ansible Creator Execution Environment`: https://github.com/ansible/creator-ee
+
+Customizing the Docker Image Used by a Scenario/Platform
+========================================================
+
+The docker driver supports using pre-built images and ``docker build`` -ing
+local customizations for each scenario's platform. The Docker image used by a
+scenario is governed by the following configuration items:
+
+1. ``platforms[*].image``: Docker image name:tag to use as base image.
+2. ``platforms[*].pre_build_image``: Whether to customize base image or use
+   as-is[^1].
+
+    * When ``true``, use the specified ``platform[].image`` as-is.
+    * When ``false``, exec ``docker build`` to customize base image using
+      either:
+
+        * Dockerfile specified by ``platforms[*].dockerfile`` or
+        * Dockerfile rendered from ``Dockerfile.j2`` template (in scenario dir)
+
+The ``Dockerfile.j2`` template is generated at ``molecule init scenario``-time
+when ``--driver-name`` is ``docker``. The template can be customized as needed
+to create the desired modifications to the Docker image used in the scenario.
+
+Note: ``platforms[*].pre_build_image`` defaults to ``true`` in each scenario's
+generated `molecule.yml` file.
 
 Docker With Non-Privileged User
 ===============================
 
 The default Molecule Docker driver executes Ansible playbooks as the root user.
-If your workflow requires a non-privileged user, then adapt ``molecule.yml``
-and ``Dockerfile.j2`` as follows.
+If your workflow requires adding support for running as a non-privileged user,
+then adapt ``molecule.yml`` and ``Dockerfile.j2`` as follows.
+
+Note: The ``Dockerfile`` templating and image building processes are only done
+for scenarios with ``pre_build_image = False``, which is not the default
+setting in generated `molecule.yml` files.
+
+To modify the Docker image to support running as normal user:
 
 Append the following code block to the end of ``Dockerfile.j2``. It creates an
-``ansible`` user with passwordless sudo privileges.
-
-The variable ``SUDO_GROUP`` depends on the target distribution. ``centos:8``
-uses ``wheel``.
+``ansible`` user with passwordless sudo privileges. Note the variable
+``SUDO_GROUP`` depends on the target distribution[^2].
 
 .. code-block:: docker
 
-    # Create `ansible` user with sudo permissions and membership in `DEPLOY_GROUP`
-    ENV ANSIBLE_USER=ansible SUDO_GROUP=wheel DEPLOY_GROUP=deployer
-    RUN set -xe \
-      && groupadd -r ${ANSIBLE_USER} \
-      && groupadd -r ${DEPLOY_GROUP} \
-      && useradd -m -g ${ANSIBLE_USER} ${ANSIBLE_USER} \
-      && usermod -aG ${SUDO_GROUP} ${ANSIBLE_USER} \
-      && usermod -aG ${DEPLOY_GROUP} ${ANSIBLE_USER} \
-      && sed -i "/^%${SUDO_GROUP}/s/ALL\$/NOPASSWD:ALL/g" /etc/sudoers
+   # Create `ansible` user with sudo permissions and membership in `DEPLOY_GROUP`
+   # This template gets rendered using `loop: "{{ molecule_yml.platforms }}"`, so
+   # each `item` is an element of platforms list from the molecule.yml file for this scenario.
+   ENV ANSIBLE_USER=ansible DEPLOY_GROUP=deployer
+   ENV SUDO_GROUP={{'sudo' if 'debian' in item.image else 'wheel' }}
+   RUN set -xe \
+     && groupadd -r ${ANSIBLE_USER} \
+     && groupadd -r ${DEPLOY_GROUP} \
+     && useradd -m -g ${ANSIBLE_USER} ${ANSIBLE_USER} \
+     && usermod -aG ${SUDO_GROUP} ${ANSIBLE_USER} \
+     && usermod -aG ${DEPLOY_GROUP} ${ANSIBLE_USER} \
+     && sed -i "/^%${SUDO_GROUP}/s/ALL\$/NOPASSWD:ALL/g" /etc/sudoers
 
 Modify ``provisioner.inventory`` in ``molecule.yml`` as follows:
 
@@ -45,7 +78,7 @@ Modify ``provisioner.inventory`` in ``molecule.yml`` as follows:
 
     platforms:
       - name: instance
-        image: centos:8
+        image: quay.io/centos/centos:stream8
         # …
 
 .. code-block:: yaml
@@ -67,7 +100,7 @@ An example for a different platform instance name:
 
     platforms:
       - name: centos8
-        image: centos:8
+        image: quay.io/centos/centos:stream8
         # …
 
 .. code-block:: yaml
@@ -179,7 +212,7 @@ and command as follows.
 
     platforms:
       - name: instance
-        image: centos:8
+        image: quay.io/centos/centos:stream8
         command: /sbin/init
         tmpfs:
           - /run
@@ -187,9 +220,8 @@ and command as follows.
         volumes:
           - /sys/fs/cgroup:/sys/fs/cgroup:ro
 
-Note that centos:8 image contains a `seccomp security profile for Docker`_
-which enables the use of systemd. When needed, such security profiles can be
-reused (for example `the one available in Fedora`_):
+When needed, such security profiles can be reused (for example
+`the one available in Fedora`_):
 
 .. code-block:: yaml
 
@@ -223,7 +255,7 @@ capabilities along with the same image, command, and volumes as shown in the
 
     platforms:
       - name: instance
-        image: centos:8
+        image: quay.io/centos/centos:stream8
         command: /sbin/init
         capabilities:
           - SYS_ADMIN
@@ -237,11 +269,10 @@ with the same image and command as shown in the ``non-privileged`` example.
 
     platforms:
       - name: instance
-        image: centos:8
+        image: quay.io/centos/centos:stream8
         command: /sbin/init
         privileged: True
 
-.. _`seccomp security profile for Docker`: https://docs.docker.com/engine/security/seccomp/
 .. _`the one available in fedora`: https://src.fedoraproject.org/rpms/docker/raw/88fa030b904d7af200b150e10ea4a700f759cca4/f/seccomp.json
 .. _`in a non-privileged container`: https://developers.redhat.com/blog/2016/09/13/running-systemd-in-a-non-privileged-container/
 .. _`start the container with extended privileges`: https://blog.docker.com/2013/09/docker-can-now-run-within-docker/
@@ -396,3 +427,6 @@ issues.
 .. _GNU Parallel: https://www.gnu.org/software/parallel/
 .. _Pytest: https://docs.pytest.org/en/latest/
 .. _UUID: https://en.wikipedia.org/wiki/Universally_unique_identifier
+
+[^1]: [Implementation in molecule-docker](https://github.com/ansible-community/molecule-docker/blob/f4efce3c4fda226c8ca5f10976927fff7daa8e69/src/molecule_docker/playbooks/create.yml#L35)
+[^2]: e.g. [Debian uses `sudo` instead of `wheel` group.](https://wiki.debian.org/sudo/)

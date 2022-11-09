@@ -204,11 +204,10 @@ def test_env_property(_instance):
     "config_instance", ["_provisioner_section_data"], indirect=True
 )
 def test_env_appends_env_property(_instance):
+    os.environ["ANSIBLE_ROLES_PATH"] = ""
 
-    # molecule could decide to add extra paths, so we only want to check
-    # that those that we need are kept inside the list
-    roles_path_list = _instance.env["ANSIBLE_ROLES_PATH"].split(":")
-    for x in [
+    expected = [
+        util.abs_path(os.path.join(_instance._config.runtime.cache_dir, "roles")),
         util.abs_path(
             os.path.join(_instance._config.scenario.ephemeral_directory, "roles")
         ),
@@ -219,8 +218,14 @@ def test_env_appends_env_property(_instance):
         "/usr/share/ansible/roles",
         "/etc/ansible/roles",
         util.abs_path(os.path.join(_instance._config.scenario.directory, "foo", "bar")),
-    ]:
-        assert x in roles_path_list
+    ]
+
+    # molecule could decide to add extra paths, so we only want to check
+    # that those that we need are kept inside the list with exact order
+
+    roles_path_list = _instance.env["ANSIBLE_ROLES_PATH"].split(":")
+
+    assert roles_path_list == expected
 
     x = _instance._get_modules_directories()
     x.append(
@@ -245,6 +250,36 @@ def test_env_appends_env_property(_instance):
         util.abs_path(os.path.join(_instance._config.scenario.directory, "foo", "bar")),
     ]
     assert x == _instance.env["ANSIBLE_FILTER_PLUGINS"].split(":")
+
+
+@pytest.mark.parametrize(
+    "config_instance", ["_provisioner_section_data"], indirect=True
+)
+def test_env_appends_env_property_with_os_env(_instance):
+    os.environ["ANSIBLE_ROLES_PATH"] = "/foo/bar:/foo/baz"
+
+    expected = [
+        util.abs_path(os.path.join(_instance._config.runtime.cache_dir, "roles")),
+        util.abs_path(
+            os.path.join(_instance._config.scenario.ephemeral_directory, "roles")
+        ),
+        util.abs_path(
+            os.path.join(_instance._config.project_directory, os.path.pardir)
+        ),
+        util.abs_path(os.path.join(os.path.expanduser("~"), ".ansible", "roles")),
+        "/usr/share/ansible/roles",
+        "/etc/ansible/roles",
+        "/foo/bar",
+        "/foo/baz",
+        util.abs_path(os.path.join(_instance._config.scenario.directory, "foo", "bar")),
+    ]
+
+    # molecule could decide to add extra paths, so we only want to check
+    # that those that we need are kept inside the list
+
+    roles_path_list = _instance.env["ANSIBLE_ROLES_PATH"].split(":")
+
+    assert roles_path_list == expected
 
 
 @pytest.mark.parametrize(
@@ -331,7 +366,7 @@ def test_check(_instance, mocker, _patched_ansible_playbook):
     _instance.check()
 
     _patched_ansible_playbook.assert_called_once_with(
-        _instance._config.provisioner.playbooks.converge, _instance._config
+        _instance._config.provisioner.playbooks.converge, _instance._config, False
     )
     _patched_ansible_playbook.return_value.add_cli_arg.assert_called_once_with(
         "check", True
@@ -343,7 +378,7 @@ def test_converge(_instance, mocker, _patched_ansible_playbook):
     result = _instance.converge()
 
     _patched_ansible_playbook.assert_called_once_with(
-        _instance._config.provisioner.playbooks.converge, _instance._config
+        _instance._config.provisioner.playbooks.converge, _instance._config, False
     )
     # NOTE(retr0h): This is not the true return type.  This is a mock return
     #               which didn't go through str.decode().
@@ -355,7 +390,9 @@ def test_converge(_instance, mocker, _patched_ansible_playbook):
 def test_converge_with_playbook(_instance, mocker, _patched_ansible_playbook):
     result = _instance.converge("playbook")
 
-    _patched_ansible_playbook.assert_called_once_with("playbook", _instance._config)
+    _patched_ansible_playbook.assert_called_once_with(
+        "playbook", _instance._config, False
+    )
     # NOTE(retr0h): This is not the true return type.  This is a mock return
     #               which didn't go through str.decode().
     assert result == b"patched-ansible-playbook-stdout"
@@ -367,7 +404,7 @@ def test_cleanup(_instance, mocker, _patched_ansible_playbook):
     _instance.cleanup()
 
     _patched_ansible_playbook.assert_called_once_with(
-        _instance._config.provisioner.playbooks.cleanup, _instance._config
+        _instance._config.provisioner.playbooks.cleanup, _instance._config, False
     )
     _patched_ansible_playbook.return_value.execute.assert_called_once_with()
 
@@ -376,7 +413,7 @@ def test_destroy(_instance, mocker, _patched_ansible_playbook):
     _instance.destroy()
 
     _patched_ansible_playbook.assert_called_once_with(
-        _instance._config.provisioner.playbooks.destroy, _instance._config
+        _instance._config.provisioner.playbooks.destroy, _instance._config, False
     )
     _patched_ansible_playbook.return_value.execute.assert_called_once_with()
 
@@ -385,7 +422,7 @@ def test_side_effect(_instance, mocker, _patched_ansible_playbook):
     _instance.side_effect()
 
     _patched_ansible_playbook.assert_called_once_with(
-        _instance._config.provisioner.playbooks.side_effect, _instance._config
+        _instance._config.provisioner.playbooks.side_effect, _instance._config, False
     )
     _patched_ansible_playbook.return_value.execute.assert_called_once_with()
 
@@ -394,7 +431,7 @@ def test_create(_instance, mocker, _patched_ansible_playbook):
     _instance.create()
 
     _patched_ansible_playbook.assert_called_once_with(
-        _instance._config.provisioner.playbooks.create, _instance._config
+        _instance._config.provisioner.playbooks.create, _instance._config, False
     )
     _patched_ansible_playbook.return_value.execute.assert_called_once_with()
 
@@ -403,7 +440,7 @@ def test_prepare(_instance, mocker, _patched_ansible_playbook):
     _instance.prepare()
 
     _patched_ansible_playbook.assert_called_once_with(
-        _instance._config.provisioner.playbooks.prepare, _instance._config
+        _instance._config.provisioner.playbooks.prepare, _instance._config, False
     )
     _patched_ansible_playbook.return_value.execute.assert_called_once_with()
 
@@ -412,7 +449,7 @@ def test_syntax(_instance, mocker, _patched_ansible_playbook):
     _instance.syntax()
 
     _patched_ansible_playbook.assert_called_once_with(
-        _instance._config.provisioner.playbooks.converge, _instance._config
+        _instance._config.provisioner.playbooks.converge, _instance._config, False
     )
     _patched_ansible_playbook.return_value.add_cli_arg.assert_called_once_with(
         "syntax-check", True

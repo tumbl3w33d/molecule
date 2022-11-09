@@ -19,6 +19,7 @@
 #  DEALINGS IN THE SOFTWARE.
 """Ansible Provisioner Module."""
 
+# pylint: disable=too-many-lines
 import collections
 import copy
 import logging
@@ -205,7 +206,7 @@ class Ansible(base.Base):
     ::
 
         ANSIBLE_ROLES_PATH:
-          $ephemeral_directory/roles/:$project_directory/../:~/.ansible/roles:/usr/share/ansible/roles:/etc/ansible/roles
+          $runtime_cache_dir/roles:$ephemeral_directory/roles/:$project_directory/../:~/.ansible/roles:/usr/share/ansible/roles:/etc/ansible/roles
         ANSIBLE_LIBRARY:
           $ephemeral_directory/modules/:$project_directory/library/:~/.ansible/plugins/modules:/usr/share/ansible/plugins/modules
         ANSIBLE_FILTER_PLUGINS:
@@ -296,8 +297,9 @@ class Ansible(base.Base):
           inventory:
             hosts:
               all:
-                extra_host:
-                  foo: hello
+                hosts:
+                  extra_host:
+                    foo: hello
 
     .. important::
 
@@ -332,6 +334,7 @@ class Ansible(base.Base):
         The only valid keys are ``hosts``, ``group_vars`` and ``host_vars``.  Molecule's
         schema validator will enforce this.
 
+
     .. code-block:: yaml
 
         provisioner:
@@ -341,6 +344,25 @@ class Ansible(base.Base):
               hosts: ../../../inventory/hosts
               group_vars: ../../../inventory/group_vars/
               host_vars: ../../../inventory/host_vars/
+
+    .. important::
+
+        You can use either `hosts`/`group_vars`/`host_vars` sections of inventory OR `links`.
+        If you use both, links will win.
+
+    .. code-block:: yaml
+
+        provisioner:
+          name: ansible
+          hosts:
+            all:
+              hosts:
+                ignored:
+                   important: this host is ignored
+          inventory:
+            links:
+              hosts: ../../../inventory/hosts
+
 
     Override connection options:
 
@@ -420,8 +442,13 @@ class Ansible(base.Base):
         # from installing dependencies to user list of collections.
         collections_path_list = [
             util.abs_path(
+                os.path.join(
+                    self._config.scenario.config.runtime.cache_dir, "collections"
+                )
+            ),
+            util.abs_path(
                 os.path.join(self._config.scenario.ephemeral_directory, "collections")
-            )
+            ),
         ]
         if collection_indicator in self._config.project_directory:
             collection_path, right = self._config.project_directory.rsplit(
@@ -437,28 +464,39 @@ class Ansible(base.Base):
                 "/etc/ansible/collections",
             ]
         )
+
+        if os.environ.get("ANSIBLE_COLLECTIONS_PATH", ""):
+            collections_path_list.extend(
+                list(
+                    map(
+                        util.abs_path, os.environ["ANSIBLE_COLLECTIONS_PATH"].split(":")
+                    )
+                )
+            )
+
+        roles_path_list = [
+            util.abs_path(
+                os.path.join(self._config.scenario.config.runtime.cache_dir, "roles")
+            ),
+            util.abs_path(
+                os.path.join(self._config.scenario.ephemeral_directory, "roles")
+            ),
+            util.abs_path(os.path.join(self._config.project_directory, os.path.pardir)),
+            util.abs_path(os.path.join(os.path.expanduser("~"), ".ansible", "roles")),
+            "/usr/share/ansible/roles",
+            "/etc/ansible/roles",
+        ]
+
+        if os.environ.get("ANSIBLE_ROLES_PATH", ""):
+            roles_path_list.extend(
+                list(map(util.abs_path, os.environ["ANSIBLE_ROLES_PATH"].split(":")))
+            )
+
         env = util.merge_dicts(
             os.environ,
             {
                 "ANSIBLE_CONFIG": self._config.provisioner.config_file,
-                "ANSIBLE_ROLES_PATH": ":".join(
-                    [
-                        util.abs_path(
-                            os.path.join(
-                                self._config.scenario.ephemeral_directory, "roles"
-                            )
-                        ),
-                        util.abs_path(
-                            os.path.join(self._config.project_directory, os.path.pardir)
-                        ),
-                        util.abs_path(
-                            os.path.join(os.path.expanduser("~"), ".ansible", "roles")
-                        ),
-                        "/usr/share/ansible/roles",
-                        "/etc/ansible/roles",
-                        *os.environ.get("ANSIBLE_ROLES_PATH", "").split(":"),
-                    ]
-                ),
+                "ANSIBLE_ROLES_PATH": ":".join(roles_path_list),
                 self._config.ansible_collections_path: ":".join(collections_path_list),
                 "ANSIBLE_LIBRARY": ":".join(self._get_modules_directories()),
                 "ANSIBLE_FILTER_PLUGINS": ":".join(
@@ -705,15 +743,22 @@ class Ansible(base.Base):
         pb = self._get_ansible_playbook(self.playbooks.destroy)
         pb.execute()
 
-    def side_effect(self):
+    def side_effect(self, action_args=None):
         """
         Execute ``ansible-playbook`` against the side_effect playbook and \
         returns None.
 
         :return: None
         """
-        pb = self._get_ansible_playbook(self.playbooks.side_effect)
-        pb.execute()
+        if action_args:
+            playbooks = [
+                self._get_ansible_playbook(self._config.provisioner.abs_path(playbook))
+                for playbook in action_args
+            ]
+        else:
+            playbooks = [self._get_ansible_playbook(self.playbooks.side_effect)]
+        for pb in playbooks:
+            pb.execute()
 
     def create(self):
         """
@@ -746,19 +791,26 @@ class Ansible(base.Base):
         pb.add_cli_arg("syntax-check", True)
         pb.execute()
 
-    def verify(self):
+    def verify(self, action_args=None):
         """
         Execute ``ansible-playbook`` against the verify playbook and returns \
         None.
 
         :return: None
         """
-        if not self.playbooks.verify:
+        if action_args:
+            playbooks = [
+                self._config.provisioner.abs_path(playbook) for playbook in action_args
+            ]
+        else:
+            playbooks = [self.playbooks.verify]
+        if not playbooks:
             LOG.warning("Skipping, verify playbook not configured.")
             return
-
-        pb = self._get_ansible_playbook(self.playbooks.verify)
-        pb.execute()
+        for playbook in playbooks:
+            # Get ansible playbooks for `verify` instead of `provision`
+            pb = self._get_ansible_playbook(playbook, verify=True)
+            pb.execute()
 
     def write_config(self):
         """
@@ -856,19 +908,23 @@ class Ansible(base.Base):
                 msg = f"The source path '{source}' does not exist."
                 util.sysexit_with_message(msg)
             msg = f"Inventory {source} linked to {target}"
-            LOG.info(msg)
+            LOG.debug(msg)
             os.symlink(source, target)
 
-    def _get_ansible_playbook(self, playbook, **kwargs):
+    def _get_ansible_playbook(self, playbook, verify=False, **kwargs):
         """
         Get an instance of AnsiblePlaybook and returns it.
 
         :param playbook: A string containing an absolute path to a
          provisioner's playbook.
+        :param verify: An optional bool to toggle the Plabook mode between
+         provision and verify. False: provision; True: verify. Default is False.
         :param kwargs: An optional keyword arguments.
         :return: object
         """
-        return ansible_playbook.AnsiblePlaybook(playbook, self._config, **kwargs)
+        return ansible_playbook.AnsiblePlaybook(
+            playbook, self._config, verify, **kwargs
+        )
 
     def _verify_inventory(self):
         """

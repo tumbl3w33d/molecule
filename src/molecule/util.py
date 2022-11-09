@@ -36,8 +36,8 @@ import jinja2
 import yaml
 from ansible_compat.ports import cache
 from rich.syntax import Syntax
-from subprocess_tee import run
 
+from molecule.app import app
 from molecule.console import console
 from molecule.constants import MOLECULE_HEADER
 
@@ -130,8 +130,6 @@ def run_command(
     :param debug: An optional bool to toggle debug output.
     """
     args = []
-    stdout = None
-    stderr = None
     if cmd.__class__.__name__ == "Command":
         raise RuntimeError(
             "Molecule 3.2.0 dropped use of sh library, update plugin code to use new API. "
@@ -143,23 +141,17 @@ def run_command(
         else:
             env = cmd.env or env
         args = cmd.cmd
-        cwd = cmd.cwd
-        stdout = cmd.stdout
-        stderr = cmd.stderr
     else:
         args = cmd
 
     if debug:
         print_environment_vars(env)
 
-    result = run(
-        args,
+    result = app.runtime.exec(
+        args=args,
         env=env,
-        stdout=stdout,
-        stderr=stderr,
-        echo=echo or debug,
-        quiet=quiet,
         cwd=cwd,
+        tee=True,
     )
     if result.returncode != 0 and check:
         raise CalledProcessError(
@@ -190,26 +182,28 @@ def render_template(template, **kwargs):
     return t.render(kwargs)
 
 
-def write_file(filename: str, content: str):
+def write_file(filename: str, content: str, header: Optional[str] = None) -> None:
     """
     Write a file with the given filename and content and returns None.
 
     :param filename: A string containing the target filename.
     :param content: A string containing the data to be written.
+    :param header: A header, if None it will use default header.
     :return: None
     """
+    if header is None:
+        content = MOLECULE_HEADER + "\n\n" + content
+
     with open_file(filename, "w") as f:
         f.write(content)
 
-    file_prepender(filename)
 
-
-def molecule_prepender(content: str):
+def molecule_prepender(content: str) -> str:
     """Return molecule identification header."""
     return MOLECULE_HEADER + "\n\n" + content
 
 
-def file_prepender(filename: str):
+def file_prepender(filename: str) -> None:
     """
     Prepend an informational header on files managed by Molecule and returns \
     None.
@@ -342,6 +336,14 @@ def _parallelize_platforms(config, run_uuid):
         return platform
 
     return [parallelize(platform) for platform in config["platforms"]]
+
+
+def _filter_platforms(config, platform_name):
+    for platform in config["platforms"]:
+        if platform["name"] == platform_name:
+            return [platform]
+
+    return []
 
 
 @cache

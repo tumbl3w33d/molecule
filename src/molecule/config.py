@@ -27,10 +27,10 @@ from typing import MutableMapping
 from uuid import uuid4
 
 from ansible_compat.ports import cache, cached_property
-from ansible_compat.runtime import Runtime
 from packaging.version import Version
 
 from molecule import api, interpolation, platforms, scenario, state, util
+from molecule.app import app
 from molecule.dependency import ansible_galaxy, shell
 from molecule.model import schema_v3
 from molecule.provisioner import ansible
@@ -52,7 +52,7 @@ def ansible_version() -> Version:
         "molecule.config.ansible_version is deprecated, will be removed in the future.",
         category=DeprecationWarning,
     )
-    return Runtime().version
+    return app.runtime.version
 
 
 # https://stackoverflow.com/questions/16017397/injecting-function-call-after-init-with-decorator  # noqa
@@ -106,7 +106,7 @@ class Config(object, metaclass=NewInitCaller):
         self._action = None
         self._run_uuid = str(uuid4())
         self.project_directory = os.getenv("MOLECULE_PROJECT_DIRECTORY", os.getcwd())
-        self.runtime = Runtime(isolated=True)
+        self.runtime = app.runtime
 
     def after_init(self):
         self.config = self._reget_config()
@@ -132,6 +132,10 @@ class Config(object, metaclass=NewInitCaller):
     @property
     def is_parallel(self):
         return self.command_args.get("parallel", False)
+
+    @property
+    def platform_name(self):
+        return self.command_args.get("platform_name", None)
 
     @property
     def debug(self):
@@ -206,7 +210,11 @@ class Config(object, metaclass=NewInitCaller):
 
     @cached_property
     def platforms(self):
-        return platforms.Platforms(self, parallelize_platforms=self.is_parallel)
+        return platforms.Platforms(
+            self,
+            parallelize_platforms=self.is_parallel,
+            platform_name=self.platform_name,
+        )
 
     @cached_property
     def provisioner(self):
@@ -220,6 +228,18 @@ class Config(object, metaclass=NewInitCaller):
 
     @cached_property
     def state(self):
+        myState = state.State(self)
+        # look at state file for molecule.yml date modified and warn if they do not match
+        if self.molecule_file and os.path.isfile(self.molecule_file):
+            modTime = os.path.getmtime(self.molecule_file)
+            if myState.molecule_yml_date_modified is None:
+                myState.change_state("molecule_yml_date_modified", modTime)
+            elif myState.molecule_yml_date_modified != modTime:
+                LOG.warning(
+                    f"The scenario config file ('{self.molecule_file}') has been modified since the scenario was created. "
+                    + "If recent changes are important, reset the scenario with 'molecule destroy' to clean up created items or "
+                    + "'molecule reset' to clear current configuration."
+                )
         return state.State(self)
 
     @cached_property
@@ -227,15 +247,19 @@ class Config(object, metaclass=NewInitCaller):
         return api.verifiers(self).get(self.config["verifier"]["name"], None)
 
     def _get_driver_name(self):
+        # the state file contains the driver from the last run
         driver_from_state_file = self.state.driver
+        # the user may supply a driver on the command line
         driver_from_cli = self.command_args.get("driver_name")
+        # the driver may also be edited in the scenario
+        driver_from_scenario = self.config["driver"]["name"]
 
         if driver_from_state_file:
             driver_name = driver_from_state_file
         elif driver_from_cli:
             driver_name = driver_from_cli
         else:
-            driver_name = self.config["driver"]["name"]
+            driver_name = driver_from_scenario
 
         if driver_from_cli and (driver_from_cli != driver_name):
             msg = (
@@ -243,6 +267,21 @@ class Config(object, metaclass=NewInitCaller):
                 f"subcommand is using '{driver_from_cli}' driver."
             )
             util.sysexit_with_message(msg)
+
+        if driver_from_state_file and driver_name not in api.drivers():
+            msg = (
+                f"Driver '{driver_name}' from state-file "
+                f"'{self.state.state_file}' is not available."
+            )
+            util.sysexit_with_message(msg)
+
+        if driver_from_scenario != driver_name:
+            msg = (
+                f"Driver '{driver_name}' is currently in use but the scenario config "
+                f"has changed and now defines '{driver_from_scenario}'. "
+                "To change drivers, run 'molecule destroy' for converged scenarios or 'molecule reset' otherwise."
+            )
+            LOG.warning(msg)
 
         return driver_name
 
@@ -290,7 +329,6 @@ class Config(object, metaclass=NewInitCaller):
         for base_config in base_configs:
             with util.open_file(base_config) as stream:
                 s = stream.read()
-                self._preflight(s)
                 interpolated_config = self._interpolate(s, env, keep_string)
                 defaults = util.merge_dicts(
                     defaults, util.safe_load(interpolated_config)
@@ -299,7 +337,6 @@ class Config(object, metaclass=NewInitCaller):
         if self.molecule_file:
             with util.open_file(self.molecule_file) as stream:
                 s = stream.read()
-                self._preflight(s)
                 interpolated_config = self._interpolate(s, env, keep_string)
                 defaults = util.merge_dicts(
                     defaults, util.safe_load(interpolated_config)
@@ -345,6 +382,7 @@ class Config(object, metaclass=NewInitCaller):
             },
             "platforms": [],
             "prerun": True,
+            "role_name_check": 0,
             "provisioner": {
                 "name": "ansible",
                 "config_options": {},
@@ -412,13 +450,6 @@ class Config(object, metaclass=NewInitCaller):
                 "additional_files_or_dirs": [],
             },
         }
-
-    def _preflight(self, data: MutableMapping):
-        env = set_env_from_file(os.environ.copy(), self.env_file)
-        errors, data = schema_v3.pre_validate(data, env, MOLECULE_KEEP_STRING)
-        if errors:
-            msg = f"Failed to pre-validate.\n\n{errors}"
-            util.sysexit_with_message(msg, detail=data)
 
     def _validate(self):
         msg = f"Validating schema {self.molecule_file}."

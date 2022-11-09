@@ -32,7 +32,7 @@ To generate a new role with Molecule, simply run:
 
 .. code-block:: bash
 
-    $ molecule init role my_new_role --driver-name docker
+    $ molecule init role acme.my_new_role --driver-name docker
 
 You should then see a ``my_new_role`` folder in your current directory.
 
@@ -99,7 +99,7 @@ directories:
           become: true
           tasks:
           - name: Initialize role without actually running it
-            include_role:
+            ansible.builtin.include_role:
               name: my_role
               tasks_from: init
 
@@ -122,7 +122,8 @@ keys represent the high level components that Molecule provides. These are:
   the driver to delegate the task of creating instances.
 
 * The :ref:`lint` command. Molecule can call external commands to ensure
-  that best practices are encouraged.
+  that best practices are encouraged. Note: `ansible-lint` is not included with
+  molecule or molecule[lint].
 
 * The :ref:`platforms` definitions. Molecule relies on this to know which
   instances to create, name and to which group each instance belongs. If you
@@ -170,7 +171,7 @@ Now, let's add a task to our ``tasks/main.yml`` like so:
 .. code-block:: yaml
 
     - name: Molecule Hello World!
-      debug:
+      ansible.builtin.debug:
         msg: Hello, World!
 
 We can then tell Molecule to test our role against our instance with:
@@ -216,3 +217,8 @@ The full lifecycle sequence can be invoked with:
     It can be particularly useful to pass the ``--destroy=never`` flag when
     invoking ``molecule test`` so that you can tell Molecule to run the full
     sequence but not destroy the instance if one step fails.
+
+    If the ``--platform-name=[PLATFORM_NAME]`` flag is passed or the
+    environment variable ``MOLECULE_PLATFORM_NAME`` is exposed when invoking
+    ``molecule test``, it can tell Molecule to run the test in one platform
+    only. It is useful if you want to test one platform docker image.

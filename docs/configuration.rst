@@ -10,11 +10,15 @@ Configuration
 Prerun
 ------
 
+Prerun
+^^^^^^
+
 In order to help Ansible find used modules and roles, molecule will perform
 a prerun set of actions. These involve installing dependencies from
 ``requirements.yml`` specified at project level, install a standalone role
 or a collection. The destination is ``project_dir/.cache`` and the code itself
-is reused from ansible-lint, which has to do the same actions.
+was reused from ansible-lint, which has to do the same actions.
+(Note: ansible-lint is not included with molecule.)
 
 This assures that when you include a role inside molecule playbooks, Ansible
 will be able to find that role, and that the include is exactly the same as
@@ -23,9 +27,25 @@ the one you are expecting to use in production.
 If for some reason the prerun action does not suits your needs, you can still
 disable it by adding `prerun: false` inside the configuration file.
 
-Keep in mind that you can add this value to ``.config/molecule/config.yml``
-file in order to avoid adding it to each scenario.
+Keep in mind that you can add this value to the ``.config/molecule/config.yml``
+file, in your ``$HOME`` or at the root of your project, in order to avoid
+adding it to each scenario.
 
+Role name check
+^^^^^^^^^^^^^^^
+
+By default, ``Molecule`` will check whether the role name follows the name
+standard. If not, it will raise an error.
+
+If computed fully qualified role name does not follow current galaxy
+requirements, you can ignore it by adding `role_name_check: 1` inside the
+configuration file.
+
+It is strongly recommended to follow the name standard of `namespace`_ and
+`role`_.
+
+.. _`namespace`: https://galaxy.ansible.com/docs/contributing/namespaces.html#galaxy-namespace-limitations
+.. _`role`: https://galaxy.ansible.com/docs/contributing/creating_role.html#role-names
 
 Variable Substitution
 ---------------------
@@ -38,21 +58,30 @@ There are following environment variables available in ``molecule.yml``:
 MOLECULE_DEBUG
    If debug is turned on or off
 MOLECULE_FILE
-   Path to molecule config file
+   Path to molecule config file, usually
+   ``~/.cache/molecule/<role-name>/<scenario-name>/molecule.yml``
 MOLECULE_ENV_FILE
-   Path to molecule environment file
+   Path to molecule environment file, usually ``<role_path>/.env.yml``
 MOLECULE_STATE_FILE
-   ?
+   Path to molecule state file, contains state of the instances
+   (created, converged, etc.). Usually
+   ``~/.cache/molecule/<role-name>/<scenario-name>/state.yml``
 MOLECULE_INVENTORY_FILE
-   Path to generated inventory file
+   Path to generated inventory file, usually
+   ``~/.cache/molecule/<role-name>/<scenario-name>/inventory/ansible_inventory.yml``
 MOLECULE_EPHEMERAL_DIRECTORY
-   Path to generated directory, usually ``~/.cache/molecule/<scenario-name>``
+   Path to generated directory,
+   usually ``~/.cache/molecule/<role-name>/<scenario-name>``
 MOLECULE_SCENARIO_DIRECTORY
-   Path to scenario directory
+   Path to scenario directory,
+   usually ``<role_path>/molecule/<scenario-name>``
 MOLECULE_PROJECT_DIRECTORY
-   Path to your project directory
+   Path to your project (role) directory, usually ``<role_path>``
 MOLECULE_INSTANCE_CONFIG
-   ?
+   Path to the instance config file,
+   contains instance name, connection, user, port, etc.
+   (populated from driver). Usually
+   ``~/.cache/molecule/<role-name>/<scenario-name>/instance_config.yml``
 MOLECULE_DEPENDENCY_NAME
    Dependency type name, usually 'galaxy'
 MOLECULE_DRIVER_NAME
@@ -68,7 +97,8 @@ MOLECULE_VERBOSITY
 MOLECULE_VERIFIER_NAME
    Name of the verifier tool (usually 'ansible')
 MOLECULE_VERIFIER_TEST_DIRECTORY
-  ?
+   Path of the directory that contains verifier tests,
+   usually ``<role_path>/<scenario-name>/<verifier-name>``
 
 
 .. _dependency:
@@ -136,6 +166,9 @@ It makes little sense to perform linting in more than one place per project.
 Molecule was able to use up to three linters and while it was aimed to flexible
 about them, it ended up creating more confusions to the users. We decided to
 maximize flexibility by just calling an external shell command.
+
+Note: ansible-lint is not included with molecule. The ``molecule[lint]`` extra
+does not install ansible-lint.
 
 .. code-block:: yaml
 

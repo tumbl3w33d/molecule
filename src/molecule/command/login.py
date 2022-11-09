@@ -21,7 +21,8 @@
 
 import logging
 import os
-from subprocess import run
+import shlex
+import subprocess
 
 import click
 
@@ -84,7 +85,7 @@ class Login(base.Base):
         super(Login, self).__init__(c)
         self._pt = None
 
-    def execute(self):
+    def execute(self, action_args=None):
         """
         Execute the actions necessary to perform a `molecule login` and \
         returns None.
@@ -142,8 +143,8 @@ class Login(base.Base):
         login_options["lines"] = lines
         login_cmd = self._config.driver.login_cmd_template.format(**login_options)
 
-        cmd = f"/usr/bin/env {login_cmd}"
-        run(cmd, shell=True)
+        cmd = shlex.split(f"/usr/bin/env {login_cmd}")
+        subprocess.run(cmd)
 
 
 @base.click_command_ex()

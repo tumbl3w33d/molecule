@@ -37,9 +37,9 @@ class Role(base.Base):
     """
     Init Role Command Class.
 
-    .. program:: molecule init role foo
+    .. program:: molecule init role acme.foo
 
-    .. option:: molecule init role foo
+    .. option:: molecule init role acme.foo
 
         Initialize a new role.
 
@@ -52,7 +52,7 @@ class Role(base.Base):
         """Construct Role."""
         self._command_args = command_args
 
-    def execute(self):
+    def execute(self, action_args=None):
         """
         Execute the actions necessary to perform a `molecule init role` and \
         returns None.

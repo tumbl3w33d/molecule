@@ -1,33 +1,58 @@
 ---
 ci:
   skip:
-  # https://github.com/pre-commit-ci/issues/issues/55
-  - pip-compile
-  - pip-compile-upgrade
-exclude: |
-    (?x)(
-        ^docs/conf.py$
-    )
+    # https://github.com/pre-commit-ci/issues/issues/55
+    - pip-compile
+    - schema
+default_language_version:
+  python: python3.8
 repos:
+  - repo: local
+    hooks:
+      - id: schema
+        name: schema
+        entry: bash -c "cd tools/test-schema && npm install && npm test"
+        pass_filenames: false
+        always_run: true
+        language: node
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    # keep it before yamllint
+    rev: "v3.0.0-alpha.4"
+    hooks:
+      - id: prettier
+        # Temporary excludes so we can gradually normalize the formatting
+        exclude: >
+          (?x)^(
+            src/molecule/cookiecutter/.*|
+            src/molecule/test/resources/templates/.*|
+            tools/test-schema/(negative_test|test)/.*|
+          )$
+        additional_dependencies:
+          - prettier
+          - prettier-plugin-toml
   - repo: https://github.com/PyCQA/doc8
-    rev: '0.10.1'
+    rev: "v1.0.0"
     hooks:
       - id: doc8
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.1.0
+    rev: v2.2.2
     hooks:
       - id: codespell
+        exclude: >
+          (?x)^(
+            tools/test-schema/package-lock.json
+          )$
   - repo: https://github.com/PyCQA/isort
     rev: 5.10.1
     hooks:
       - id: isort
   - repo: https://github.com/psf/black
-    rev: 21.11b1
+    rev: 22.10.0
     hooks:
       - id: black
         language_version: python3
   - repo: https://github.com/pre-commit/pre-commit-hooks.git
-    rev: v4.0.1
+    rev: v4.3.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -38,7 +63,7 @@ repos:
       - id: debug-statements
         language_version: python3
   - repo: https://github.com/PyCQA/flake8
-    rev: 4.0.1
+    rev: 5.0.4
     hooks:
       - id: flake8
         additional_dependencies:
@@ -48,14 +73,14 @@ repos:
           - flake8-docstrings>=1.5.0
         language_version: python3
   - repo: https://github.com/adrienverge/yamllint.git
-    rev: v1.26.3
+    rev: v1.28.0
     hooks:
       - id: yamllint
         files: \.(yaml|yml)$
         types: [file, yaml]
         entry: yamllint --strict
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v0.910-1
+    rev: v0.982
     hooks:
       - id: mypy
         # empty args needed in order to match mypy cli behavior
@@ -63,48 +88,39 @@ repos:
         entry: mypy src/
         pass_filenames: false
         additional_dependencies:
-          - ansible-compat>=0.5.0
+          - ansible-compat>=2.2.0
           - click>=8.0.1
-          - enrich>=1.2.5
+          - enrich>=1.2.7
           - importlib-metadata>=4.6.1
           - jinja2
           - packaging
           - rich
           - ruamel.yaml>=0.17.10
-          - subprocess-tee>=0.2.0
-          - tenacity
           - types-PyYAML
           - types-dataclasses
           - types-filelock
           - types-setuptools
   - repo: https://github.com/PyCQA/pylint
-    rev: v2.12.1
+    rev: v2.15.5
     hooks:
       - id: pylint
         additional_dependencies:
-          - ansible-compat
-          - cerberus
+          - ansible-compat>=2.2.0
           - click
           - click-help-colors
           - cookiecutter
-          - enrich>=1.2.5
+          - enrich>=1.2.7
           - filelock
+          - jsonschema
           - pexpect
-          - subprocess-tee>=0.2.0
           - testinfra
-  - # keep at bottom as these are slower
-    repo: local
+  - repo: https://github.com/jazzband/pip-tools
+    rev: 6.9.0
     hooks:
-    - id: pip-compile
-      name: pip-compile
-      entry: pip-compile --strip-extras --no-annotate --output-file=constraints.txt setup.cfg --extra test --extra yamllint
-      language: system
-      files: ^(setup\.cfg|=constraints\.txt)$
-      pass_filenames: false
-    - id: pip-compile-upgrade
-      name: pip-compile-upgrade
-      entry: pip-compile --strip-extras -q --upgrade --no-annotate --output-file=constraints.txt setup.cfg --extra test --extra yamllint
-      language: system
-      files: ^(setup\.cfg|=constraints\.txt)$
-      pass_filenames: false
-      stages: [manual]
+      - id: pip-compile
+        entry: pip-compile -q --strip-extras --no-annotate --output-file=requirements.txt tools/opts.txt setup.cfg --extra docs --extra test --extra lint
+      - id: pip-compile
+        name: pip-compile-upgrade
+        entry: pip-compile -q --strip-extras -q --upgrade --no-annotate --output-file=requirements.txt tools/opts.txt setup.cfg --extra docs --extra test --extra lint
+        files: ^(setup\.cfg|requirements.txt|constraints\.txt)$
+        stages: [manual]

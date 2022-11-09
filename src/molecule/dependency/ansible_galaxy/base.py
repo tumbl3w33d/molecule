@@ -112,7 +112,7 @@ class AnsibleGalaxyBase(base.Base):
             env=self.env,
         )
 
-    def execute(self):
+    def execute(self, action_args=None):
         if not self.enabled:
             msg = "Skipping, dependency is disabled."
             LOG.warning(msg)
@@ -137,7 +137,7 @@ class AnsibleGalaxyBase(base.Base):
         :return: None
         """
         if not os.path.isdir(self.install_path):
-            os.makedirs(self.install_path)
+            os.makedirs(self.install_path, exist_ok=True)
 
     def _has_requirements_file(self):
         return os.path.isfile(self.requirements_file)

@@ -59,7 +59,7 @@ class Base(object, metaclass=abc.ABCMeta):
             setattr(cls, "execute", wrapper(cls.execute))
 
     @abc.abstractmethod
-    def execute(self):  # pragma: no cover
+    def execute(self, action_args=None):  # pragma: no cover
         pass
 
     def _setup(self) -> None:
@@ -107,8 +107,11 @@ def execute_cmdline_scenarios(scenario_name, args, command_args, ansible_args=()
     for scenario in scenarios:
 
         if scenario.config.config["prerun"]:
-            LOG.info("Performing prerun...")
-            scenario.config.runtime.prepare_environment()
+            role_name_check = scenario.config.config["role_name_check"]
+            LOG.info("Performing prerun with role_name_check=%s...", role_name_check)
+            scenario.config.runtime.prepare_environment(
+                install_local=True, role_name_check=role_name_check
+            )
 
         if command_args.get("subcommand") == "reset":
             LOG.info("Removing %s", scenario.ephemeral_directory)
@@ -136,17 +139,19 @@ def execute_cmdline_scenarios(scenario_name, args, command_args, ansible_args=()
                 raise
 
 
-def execute_subcommand(config, subcommand):
+def execute_subcommand(config, subcommand_and_args):
     """Execute subcommand."""
+    (subcommand, *args) = subcommand_and_args.split(" ")
     command_module = getattr(molecule.command, subcommand)
     command = getattr(command_module, text.camelize(subcommand))
+
     # knowledge of the current action is used by some provisioners
     # to ensure they behave correctly during certain sequence steps,
     # particularly the setting of ansible options in create/destroy,
     # and is also used for reporting in execute_cmdline_scenarios
     config.action = subcommand
 
-    return command(config).execute()
+    return command(config).execute(args)
 
 
 def execute_scenario(scenario):

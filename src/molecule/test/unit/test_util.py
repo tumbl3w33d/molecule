@@ -24,6 +24,7 @@ import binascii
 import io
 import os
 import warnings
+from pathlib import Path
 
 import pytest
 
@@ -138,37 +139,19 @@ def test_run_command_with_debug(mocker, patched_print_debug):
     assert x == patched_print_debug.mock_calls
 
 
-def test_run_command_baked_env(mocker):
-    run_mock = mocker.patch.object(util, "run")
-    run_mock.return_value = mocker.Mock(returncode=0)
-    cmd = util.BakedCommand(cmd=["ls"], env=None)
+def test_run_command_baked_cmd_env():
+    cmd = util.BakedCommand(cmd=["printenv", "myvar"], env=dict(myvar="myvalue"))
+    result = util.run_command(cmd, env=dict(myvar2="value2"))
+    assert result.returncode == 0
 
-    util.run_command(cmd, env=dict(myvar="myrealvalue"))
+    cmd = util.BakedCommand(cmd=["printenv", "myvar2"], env=dict(myvar="myvalue"))
+    result = util.run_command(cmd, env=dict(myvar2="value2"))
+    assert result.returncode == 0
 
-    # call_args[1] contains kwargs
-    assert run_mock.call_args[1]["env"] == dict(myvar="myrealvalue")
-
-
-def test_run_command_baked_cmd_env(mocker):
-    run_mock = mocker.patch.object(util, "run")
-    run_mock.return_value = mocker.Mock(returncode=0)
-    cmd = util.BakedCommand(cmd=["ls"], env=dict(myvar="myvalue"))
-
-    util.run_command(cmd)
-
-    # call_args[1] contains kwargs
-    assert run_mock.call_args[1]["env"] == dict(myvar="myvalue")
-
-
-def test_run_command_baked_both_envs(mocker):
-    run_mock = mocker.patch.object(util, "run")
-    run_mock.return_value = mocker.Mock(returncode=0)
-    cmd = util.BakedCommand(cmd=["ls"], env=dict(myvar="myvalue"))
-
-    util.run_command(cmd, env=dict(myvar="myrealvalue"))
-
-    # call_args[1] contains kwargs
-    assert run_mock.call_args[1]["env"] == dict(myvar="myrealvalue")
+    # negative test
+    cmd = util.BakedCommand(cmd=["printenv", "myvar"], env={})
+    result = util.run_command(cmd)
+    assert result.returncode == 1
 
 
 def test_run_command_with_debug_handles_no_env(mocker, patched_print_debug):
@@ -186,7 +169,7 @@ def test_os_walk(temp_dir):
     for scenario in scenarios:
         scenario_directory = os.path.join(mol_dir, scenario)
         molecule_file = get_molecule_file(scenario_directory)
-        os.makedirs(scenario_directory)
+        os.makedirs(scenario_directory, exist_ok=True)
         util.write_file(molecule_file, "")
 
     result = [f for f in util.os_walk(mol_dir, "molecule.yml")]
@@ -210,10 +193,12 @@ def test_write_file(temp_dir):
     assert x == data
 
 
-def molecule_prepender(content):
-    x = f"{MOLECULE_HEADER}\nfoo bar"
-
-    assert x == util.file_prepender("foo bar")
+def test_molecule_prepender(tmp_path: Path) -> None:
+    fname = tmp_path / "some.txt"
+    fname.write_text("foo bar")
+    x = f"{MOLECULE_HEADER}\n\nfoo bar"
+    util.file_prepender(str(fname))
+    assert x == fname.read_text()
 
 
 def test_safe_dump():
