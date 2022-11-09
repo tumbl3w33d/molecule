@@ -331,6 +331,8 @@ def validate_parallel_cmd_args(cmd_args):
 def _parallelize_platforms(config, run_uuid):
     def parallelize(platform):
         platform["name"] = f"{platform['name']}-{run_uuid}"
+        if "name_length_limit" in platform:
+            platform["name"] = platform["name"][0: platform["name_length_limit"] - 1]
         return platform
 
     return [parallelize(platform) for platform in config["platforms"]]
