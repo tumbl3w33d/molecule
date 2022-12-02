@@ -85,6 +85,7 @@
             "delegated",
             "docker",
             "containers",
+            "hetznercloud",
             "openstack",
             "podman",
             "vagrant",
